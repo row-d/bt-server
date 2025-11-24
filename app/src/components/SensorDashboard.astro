@@ -1,0 +1,37 @@
+<div
+  class="w-full max-w-xl border border-gray-200 bg-white rounded-lg p-4 shadow-sm"
+>
+  <h2 class="font-semibold mb-3">Panel de sensores</h2>
+  <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+    <dt class="text-gray-500">Temperatura</dt>
+    <dd class="font-medium flex items-baseline gap-2">
+      <span
+        class="inline-flex justify-end font-mono tabular-nums tracking-tight w-[9ch]"
+        x-text="num(temp, 2)"></span>
+      <span class="text-gray-500 shrink-0">°C</span>
+    </dd>
+
+    <dt class="text-gray-500">Humedad</dt>
+    <dd class="font-medium flex items-baseline gap-2">
+      <span
+        class="inline-flex justify-end font-mono tabular-nums tracking-tight w-[9ch]"
+        x-text="num(hum, 2)"></span>
+      <span class="text-gray-500 shrink-0">%</span>
+    </dd>
+
+    <dt class="text-gray-500">Presión</dt>
+    <dd class="font-medium flex items-baseline gap-2">
+      <span
+        class="inline-flex justify-end font-mono tabular-nums tracking-tight w-[9ch]"
+        x-text="num(pres, 2)"></span>
+      <span class="text-gray-500 shrink-0">hPa</span>
+    </dd>
+
+    <dt class="text-gray-500">Luz</dt>
+    <dd class="font-medium">
+      <span
+        class="inline-flex justify-end font-mono tabular-nums tracking-tight w-[9ch]"
+        x-text="int(light)"></span>
+    </dd>
+  </dl>
+</div>

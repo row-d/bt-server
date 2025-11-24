@@ -1,0 +1,48 @@
+<div class="flex flex-wrap gap-3 items-stretch sm:items-center mb-4">
+  <button
+    @click="connect()"
+    :disabled="connected || busy"
+    class="w-full sm:w-auto px-3 py-2 rounded-md text-white disabled:opacity-50 disabled:cursor-not-allowed"
+    :class="busy ? 'bg-indigo-400' : 'bg-indigo-600 hover:bg-indigo-700'"
+  >
+    <span x-show="!busy">Conectar</span>
+    <span x-show="busy" class="inline-flex items-center gap-2">
+      <svg
+        class="animate-spin h-4 w-4 text-white"
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <circle
+          class="opacity-25"
+          cx="12"
+          cy="12"
+          r="10"
+          stroke="currentColor"
+          stroke-width="4"></circle>
+        <path
+          class="opacity-75"
+          fill="currentColor"
+          d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+      </svg>
+      Conectando…
+    </span>
+  </button>
+  <button
+    @click="disconnect()"
+    :disabled="!connected"
+    x-show="connected"
+    class="w-full sm:w-auto px-3 py-2 rounded-md border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+  >
+    Desconectar
+  </button>
+  <span
+    class="font-semibold ml-0 sm:ml-2"
+    x-class="{
+      'text-gray-600': statusLevel==='muted',
+      'text-emerald-600': statusLevel==='ok',
+      'text-rose-600': statusLevel==='warn'
+    }"
+    x-text="statusText">
+  </span>
+</div>
