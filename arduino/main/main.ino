@@ -1,183 +1,192 @@
+#include <Arduino.h>
 #include <ArduinoBLE.h>
 #include <Arduino_MKRIoTCarrier.h>
+#include <TimeLib.h>
 
-// BT
-// > Sensors
-BLEService sensorService("f2c9bbaa-7595-4b33-99e9-0ce1cd1422f9");
-BLEFloatCharacteristic temperatureCharacteristic("bcd3a81a-20cc-4e27-be8c-89df34325729", BLERead | BLENotify);
-BLEFloatCharacteristic humidityCharacteristic("2c394694-e7a4-481c-84c7-60faebe166fd", BLERead | BLENotify);
-BLEFloatCharacteristic pressureCharacteristic("fbdd96a8-e40f-467a-ab5d-15955cf5ded1", BLERead | BLENotify);
-BLEIntCharacteristic lightCharacteristic("2743dc8f-6162-4b48-b2db-ebfd9faa4075", BLERead | BLENotify);
+#include "AlarmConfig.h"
+#include "DisplayController.h"
+#include "MelodyManager.h"
 
-// Additional sensor characteristics (RGB color sensor + IMU)
-BLEIntCharacteristic colorRCharacteristic("5f5b4d30-3b2b-4f8d-a2a7-1a2b3c4d5e6f", BLERead | BLENotify);
-BLEIntCharacteristic colorGCharacteristic("5f5b4d31-3b2b-4f8d-a2a7-1a2b3c4d5e6f", BLERead | BLENotify);
-BLEIntCharacteristic colorBCharacteristic("5f5b4d32-3b2b-4f8d-a2a7-1a2b3c4d5e6f", BLERead | BLENotify);
-
-BLEFloatCharacteristic gxCharacteristic("5f5b4d40-3b2b-4f8d-a2a7-1a2b3c4d5e6f", BLERead | BLENotify);
-BLEFloatCharacteristic gyCharacteristic("5f5b4d41-3b2b-4f8d-a2a7-1a2b3c4d5e6f", BLERead | BLENotify);
-BLEFloatCharacteristic gzCharacteristic("5f5b4d42-3b2b-4f8d-a2a7-1a2b3c4d5e6f", BLERead | BLENotify);
-BLEFloatCharacteristic axCharacteristic("5f5b4d43-3b2b-4f8d-a2a7-1a2b3c4d5e6f", BLERead | BLENotify);
-BLEFloatCharacteristic ayCharacteristic("5f5b4d44-3b2b-4f8d-a2a7-1a2b3c4d5e6f", BLERead | BLENotify);
-BLEFloatCharacteristic azCharacteristic("5f5b4d45-3b2b-4f8d-a2a7-1a2b3c4d5e6f", BLERead | BLENotify);
-
-// > Controls (new control service)
-BLEService controlService("5f5b4d2a-3b2b-4f8d-a2a7-1a2b3c4d5e6f");
-BLEByteCharacteristic relay1Characteristic("5f5b4d2b-3b2b-4f8d-a2a7-1a2b3c4d5e6f", BLERead | BLEWrite | BLENotify);
-BLEByteCharacteristic relay2Characteristic("5f5b4d2c-3b2b-4f8d-a2a7-1a2b3c4d5e6f", BLERead | BLEWrite | BLENotify);
-BLEIntCharacteristic buzzerCharacteristic("5f5b4d2d-3b2b-4f8d-a2a7-1a2b3c4d5e6f", BLERead | BLEWrite | BLENotify);
-BLECharacteristic ledCharacteristic("5f5b4d2e-3b2b-4f8d-a2a7-1a2b3c4d5e6f", BLEWrite, 4); // [index(0-4 or 255=all), R, G, B]
-
-// Carrier
 MKRIoTCarrier carrier;
-float temperature;
-float humidity;
-float pressure;
-int light;
-int r, g, b;
-float Gx, Gy, Gz;
-float Ax, Ay, Az;
+DisplayController displayController(carrier);
+BLEService alarmService("4e2b8b44-b494-4d79-af1e-3bf62ec2c614");
+BLEByteCharacteristic switchAlarm("1df56013-b380-45fd-b3e2-b7785d55b1d4", BLEWrite | BLERead);
+BLECharacteristic alarmTime("d48e347c-28ec-4054-9170-a4d19330361a",
+                            BLEWrite | BLERead, TIME_PAYLOAD_SIZE);
+BLECharacteristic localTime("2c469837-3418-44d1-b123-2b9a03099c0f",
+                            BLEWrite | BLERead, TIME_PAYLOAD_SIZE);
+BLECharacteristic melodySequenceCharacteristic(
+  "07a25765-1304-48d4-9b13-1b0bbef6b418", BLEWrite | BLERead,
+  MELODY_CHAR_BUFFER);
 
-// Handlers for control writes
-void onRelay1Written(BLEDevice central, BLECharacteristic characteristic) {
-  uint8_t v = relay1Characteristic.value();
-  if (v) {
-    carrier.Relay1.close();
-  } else {
-    carrier.Relay1.open();
-  }
-  relay1Characteristic.writeValue(v);
-}
+MelodyManager melodyManager;
 
-void onRelay2Written(BLEDevice central, BLECharacteristic characteristic) {
-  uint8_t v = relay2Characteristic.value();
-  if (v) {
-    carrier.Relay2.close();
-  } else {
-    carrier.Relay2.open();
-  }
-  relay2Characteristic.writeValue(v);
-}
+uint8_t alarmH = 0;
+uint8_t alarmM = 0;
+uint8_t localH = 0;
+uint8_t localM = 0;
+bool alarmOn = false;
+int lastAlarmMinute = -1;
 
-void onBuzzerWritten(BLEDevice central, BLECharacteristic characteristic) {
-  int freq = buzzerCharacteristic.value();
-  if (freq > 0) {
-    carrier.Buzzer.sound(freq);
-  } else {
-    carrier.Buzzer.noSound();
-  }
-}
+void onBLEConnected(BLEDevice central);
+void onBLEDisconnected(BLEDevice central);
 
-void onLedWritten(BLEDevice central, BLECharacteristic characteristic) {
-  uint8_t buf[4];
-  int len = ledCharacteristic.valueLength();
-  if (len == 4) {
-    ledCharacteristic.readValue(buf, 4);
-    uint8_t index = buf[0];
-    uint8_t R = buf[1];
-    uint8_t G = buf[2];
-    uint8_t B = buf[3];
-
-    if (index == 255) {
-      for (int i = 0; i < 5; i++) {
-        carrier.leds.setPixelColor(i, R, G, B);
-      }
-    } else if (index < 5) {
-      carrier.leds.setPixelColor(index, R, G, B);
-    }
-    carrier.leds.show();
-  }
+void writeTimeCharacteristic(BLECharacteristic &characteristic, uint8_t hourValue,
+                             uint8_t minuteValue) {
+  uint8_t payload[TIME_PAYLOAD_SIZE] = {hourValue, minuteValue};
+  characteristic.writeValue(payload, sizeof(payload));
 }
 
 void setup() {
-  //SERIAL
-  Serial.begin(9600);
-  while (!Serial) {}
-
-  //BT
-  if (!BLE.begin()) {
-    Serial.println("starting BLE failed!");
-    while (1)
-      ;
-  }
-  BLE.setLocalName("Arduino MKR IoT Carrier");
-  BLE.setAdvertisedService(sensorService);
-  sensorService.addCharacteristic(temperatureCharacteristic);
-  sensorService.addCharacteristic(humidityCharacteristic);
-  sensorService.addCharacteristic(lightCharacteristic);
-  sensorService.addCharacteristic(pressureCharacteristic);
-  sensorService.addCharacteristic(colorRCharacteristic);
-  sensorService.addCharacteristic(colorGCharacteristic);
-  sensorService.addCharacteristic(colorBCharacteristic);
-  sensorService.addCharacteristic(gxCharacteristic);
-  sensorService.addCharacteristic(gyCharacteristic);
-  sensorService.addCharacteristic(gzCharacteristic);
-  sensorService.addCharacteristic(axCharacteristic);
-  sensorService.addCharacteristic(ayCharacteristic);
-  sensorService.addCharacteristic(azCharacteristic);
-  BLE.addService(sensorService);
-
-  // Control service
-  controlService.addCharacteristic(relay1Characteristic);
-  controlService.addCharacteristic(relay2Characteristic);
-  controlService.addCharacteristic(buzzerCharacteristic);
-  controlService.addCharacteristic(ledCharacteristic);
-  BLE.addService(controlService);
-
-  // Init control defaults
-  relay1Characteristic.writeValue((uint8_t)0);
-  relay2Characteristic.writeValue((uint8_t)0);
-  buzzerCharacteristic.writeValue(0);
-
-  // Event handlers
-  relay1Characteristic.setEventHandler(BLEWritten, onRelay1Written);
-  relay2Characteristic.setEventHandler(BLEWritten, onRelay2Written);
-  buzzerCharacteristic.setEventHandler(BLEWritten, onBuzzerWritten);
-  ledCharacteristic.setEventHandler(BLEWritten, onLedWritten);
-
-  //CARRIER
+  // 1. SERIAL
+  Serial.begin(SERIAL_BAUD_RATE);
+  
+  // 2. CARRIER
   carrier.noCase();
-  carrier.begin();
+  carrier.begin(); // Inicia el carrier antes de usar la pantalla o sensores
 
-  // FINALLY
+  // 3. INICIALIZAR BLE (ESTO DEBE IR PRIMERO)
+  if (!BLE.begin()) {
+    Serial.println("¡Fallo al iniciar el módulo BLE!");
+    while (1); // Detener si falla el hardware
+  }
+
+  // 4. CONFIGURAR BLE (Ahora que ya está iniciado)
+  BLE.setLocalName("ARDUINO ALARMA");
+  BLE.setAdvertisedService(alarmService); // Importante para que app lo detecte al escanear
+  
+  // Añadir características al servicio
+  alarmService.addCharacteristic(switchAlarm);
+  alarmService.addCharacteristic(localTime);
+  alarmService.addCharacteristic(alarmTime);
+  alarmService.addCharacteristic(melodySequenceCharacteristic);
+  
+  // Añadir el servicio al dispositivo
+  BLE.addService(alarmService);
+
+  // 5. CONFIGURAR EVENT HANDLERS
+  switchAlarm.setEventHandler(BLEWritten, setSwitchAlarm);
+  localTime.setEventHandler(BLEWritten, setLocalTime);
+  alarmTime.setEventHandler(BLEWritten, setAlarmTime);
+  melodySequenceCharacteristic.setEventHandler(BLEWritten, setMelodySequence);
+  BLE.setEventHandler(BLEConnected, onBLEConnected);
+  BLE.setEventHandler(BLEDisconnected, onBLEDisconnected);
+
+  melodyManager.attachCharacteristic(&melodySequenceCharacteristic);
+
+  // 6. VALORES INICIALES
+  writeTimeCharacteristic(localTime, localH, localM);
+  writeTimeCharacteristic(alarmTime, alarmH, alarmM);
+  melodyManager.publishSequence();
+
+  // 7. COMENZAR A ANUNCIAR
   BLE.advertise();
-  Serial.println("Bluetooth® device active, waiting for connections...");
+  Serial.println("BLE ALARM SERVICE ADVERTISED");
 }
 
 void loop() {
-  BLEDevice central = BLE.central();
+  BLE.poll();
+  displayController.update();
+  checkAlarm(carrier);
+  melodyManager.update(carrier);
+}
 
-  if (central) {
-    // READ
-    temperature = carrier.Env.readTemperature();
-    humidity = carrier.Env.readHumidity();
-    pressure = carrier.Pressure.readPressure();
-
-    carrier.IMUmodule.readGyroscope(Gx, Gy, Gz);
-    carrier.IMUmodule.readAcceleration(Ax, Ay, Az);
-
-    while (!carrier.Light.colorAvailable()) {
-      delay(5);
+void setSwitchAlarm(BLEDevice central, BLECharacteristic characteristic) {
+  if (switchAlarm.written()) {
+    bool switchValue = switchAlarm.value();
+    alarmOn = switchValue;
+    if (!alarmOn) {
+      melodyManager.stop();
+      carrier.Buzzer.noSound();
+      carrier.leds.fill(0);
+      carrier.leds.show();
     }
-    carrier.Light.readColor(r, g, b, light);
-
-    // WRITE & NOTIFY
-    temperatureCharacteristic.writeValue(temperature);
-    humidityCharacteristic.writeValue(humidity);
-    lightCharacteristic.writeValue(light);
-    pressureCharacteristic.writeValue(pressure);
-
-    colorRCharacteristic.writeValue(r);
-    colorGCharacteristic.writeValue(g);
-    colorBCharacteristic.writeValue(b);
-
-    gxCharacteristic.writeValue(Gx);
-    gyCharacteristic.writeValue(Gy);
-    gzCharacteristic.writeValue(Gz);
-    axCharacteristic.writeValue(Ax);
-    ayCharacteristic.writeValue(Ay);
-    azCharacteristic.writeValue(Az);
-
-    BLE.poll();
+    Serial.print("[BLE] switchAlarm updated by ");
+    Serial.print(central.address());
+    Serial.print(" -> ");
+    Serial.println(alarmOn ? "ON" : "OFF");
   }
+}
+
+void setLocalTime(BLEDevice central, BLECharacteristic characteristic) {
+  if (localTime.written()) {
+    uint8_t payload[TIME_PAYLOAD_SIZE] = {0};
+    int bytesRead = localTime.readValue(payload, sizeof(payload));
+    if (bytesRead == TIME_PAYLOAD_SIZE) {
+      localH = constrain(payload[0], MIN_HOUR_VALUE, MAX_HOUR_VALUE);
+      localM = constrain(payload[1], MIN_MINUTE_VALUE, MAX_MINUTE_VALUE);
+      timeStatus_t status = timeStatus();
+      int currentSecond = second();
+      int currentDay = day();
+      int currentMonth = month();
+      int currentYear = year();
+      if (status == timeNotSet) {
+        // Pick a sane baseline date when the RTC has not been initialized yet.
+        currentSecond = DEFAULT_SECOND;
+        currentDay = DEFAULT_DAY;
+        currentMonth = DEFAULT_MONTH;
+        currentYear = DEFAULT_YEAR;
+      }
+      setTime(localH, localM, currentSecond, currentDay, currentMonth,
+              currentYear);
+      localH = hour();
+      localM = minute();
+      writeTimeCharacteristic(localTime, localH, localM);
+      Serial.print("[BLE] localTime set by ");
+      Serial.print(central.address());
+      Serial.print(" -> ");
+      Serial.print(localH);
+      Serial.print(":");
+      Serial.println(localM);
+    }
+  }
+}
+
+void setAlarmTime(BLEDevice central, BLECharacteristic characteristic) {
+  if (alarmTime.written()) {
+    uint8_t payload[TIME_PAYLOAD_SIZE] = {0};
+    int bytesRead = alarmTime.readValue(payload, sizeof(payload));
+    if (bytesRead == TIME_PAYLOAD_SIZE) {
+      alarmH = constrain(payload[0], MIN_HOUR_VALUE, MAX_HOUR_VALUE);
+      alarmM = constrain(payload[1], MIN_MINUTE_VALUE, MAX_MINUTE_VALUE);
+      writeTimeCharacteristic(alarmTime, alarmH, alarmM);
+      Serial.print("[BLE] alarmTime set by ");
+      Serial.print(central.address());
+      Serial.print(" -> ");
+      Serial.print(alarmH);
+      Serial.print(":");
+      Serial.println(alarmM);
+    }
+  }
+}
+
+void setMelodySequence(BLEDevice central, BLECharacteristic characteristic) {
+  if (melodyManager.handleWrite()) {
+    Serial.print("[BLE] melody sequence updated by ");
+    Serial.print(central.address());
+    Serial.print(" (steps: ");
+    Serial.print(melodyManager.stepCount());
+    Serial.println(")");
+  }
+}
+
+void checkAlarm(MKRIoTCarrier &carrier) {
+  if (alarmOn && hour() == alarmH && minute() == alarmM) {
+    if (minute() != lastAlarmMinute) {
+      lastAlarmMinute = minute();
+      melodyManager.start();
+    }
+  } else {
+    lastAlarmMinute = -1;
+  }
+}
+
+void onBLEConnected(BLEDevice central) {
+  Serial.print("[BLE] Central connected: ");
+  Serial.println(central.address());
+}
+
+void onBLEDisconnected(BLEDevice central) {
+  Serial.print("[BLE] Central disconnected: ");
+  Serial.println(central.address());
 }

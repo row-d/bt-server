@@ -1,5 +1,25 @@
+import * as Tone from "tone";
 import { createBLECentral } from "./central";
-import type { BLEAppState, RGBColor } from "./types";
+import { normalizeMelodySequence } from "./sequence";
+import { DEFAULT_NOTE_DURATION_MS } from "./constants";
+import type { BLEAppState } from "./types";
+
+function parseTimeValue(value: string) {
+  const match = /^\s*(\d{1,2}):(\d{2})\s*$/.exec(value || "");
+  if (!match) {
+    throw new Error("Hora inválida. Usa el formato HH:MM");
+  }
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    throw new Error("La hora está fuera de rango");
+  }
+  return { hour, minute };
+}
+
+function twoDigits(value: number) {
+  return value.toString().padStart(2, "0");
+}
 
 export function bleApp(): BLEAppState {
   return {
@@ -7,41 +27,10 @@ export function bleApp(): BLEAppState {
     busy: false,
     statusText: "Desconectado",
     statusLevel: "muted",
-    temp: null,
-    hum: null,
-    pres: null,
-    light: null,
-    colorR: null,
-    colorG: null,
-    colorB: null,
-    gx: null,
-    gy: null,
-    gz: null,
-    ax: null,
-    ay: null,
-    az: null,
-    relay1: 0,
-    relay2: 0,
-    buzzerFreq: 0,
-    ledColor: "#ffffff",
-    ledIndex: 255,
     ble: null,
 
     init() {
       this.ble = createBLECentral({
-        onTemp: (value) => (this.temp = value),
-        onHum: (value) => (this.hum = value),
-        onPres: (value) => (this.pres = value),
-        onLight: (value) => (this.light = value),
-        onColorR: (value) => (this.colorR = value),
-        onColorG: (value) => (this.colorG = value),
-        onColorB: (value) => (this.colorB = value),
-        onGx: (value) => (this.gx = value),
-        onGy: (value) => (this.gy = value),
-        onGz: (value) => (this.gz = value),
-        onAx: (value) => (this.ax = value),
-        onAy: (value) => (this.ay = value),
-        onAz: (value) => (this.az = value),
         onConnected: (connected) => {
           this.connected = connected;
           this.busy = false;
@@ -55,12 +44,26 @@ export function bleApp(): BLEAppState {
           this.busy = false;
         },
       });
+
+      if (typeof window !== "undefined") {
+        (window as Window & { bleAppInstance?: BLEAppState }).bleAppInstance = this;
+      }
     },
 
     async connect() {
       this.busy = true;
       try {
         await this.ble?.connect();
+        if (this.connected && this.ble) {
+          const now = new Date();
+          await this.ble.setLocalTime(now.getHours(), now.getMinutes());
+          const settings = await this.readSettings();
+          if (settings) {
+            window.dispatchEvent(
+              new CustomEvent("ble-settings-loaded", { detail: settings })
+            );
+          }
+        }
       } finally {
         this.busy = false;
       }
@@ -74,44 +77,86 @@ export function bleApp(): BLEAppState {
         this.busy = false;
       }
     },
+    async configureAlarm(time, melody) {
+      if (!this.ble) {
+        throw new Error("Inicializa la conexión BLE desde la parte superior");
+      }
+      if (!this.connected) {
+        throw new Error("Conecta tu placa antes de programar la alarma");
+      }
+      const { sequence } = normalizeMelodySequence(melody);
 
-    async toggleRelay1() {
-      this.relay1 = this.relay1 ? 0 : 1;
-      await this.ble?.setRelay1(this.relay1);
+      const controller = this.ble;
+      const { hour, minute } = parseTimeValue(time);
+      const now = new Date();
+
+      this.busy = true;
+      try {
+        await Promise.all([
+          controller.setLocalTime(now.getHours(), now.getMinutes()),
+          controller.setAlarmTime(hour, minute),
+        ]);
+        await controller.setMelodySequence(sequence);
+        await controller.setAlarmEnabled(true);
+        this.statusText = `Alarma programada a las ${twoDigits(hour)}:${twoDigits(minute)}`;
+        this.statusLevel = "ok";
+      } finally {
+        this.busy = false;
+      }
     },
 
-    async toggleRelay2() {
-      this.relay2 = this.relay2 ? 0 : 1;
-      await this.ble?.setRelay2(this.relay2);
-    },
+    async readSettings() {
+      if (!this.ble || !this.connected) {
+        return null;
+      }
+      this.busy = true;
+      try {
+        const [alarmTime, rawMelody] = await Promise.all([
+          this.ble.getAlarmTime(),
+          this.ble.getMelodySequence(),
+        ]);
+        
+        // Convert raw melody (ms) to UI melody (multipliers)
+        const melody = rawMelody
+          .split(" ")
+          .map((token) => {
+            const [freqStr, durationMs] = token.split("@");
+            
+            let note = freqStr;
+            const freq = Number(freqStr);
+            if (Number.isFinite(freq) && freq > 0) {
+              try {
+                note = Tone.Frequency(freq).toNote();
+              } catch {}
+            }
 
-    async buzzerOn() {
-      await this.ble?.setBuzzer(this.buzzerFreq || 800);
-    },
+            if (!durationMs) return note;
+            
+            const ms = parseInt(durationMs, 10);
+            if (isNaN(ms)) return note;
 
-    async buzzerOff() {
-      this.buzzerFreq = 0;
-      await this.ble?.setBuzzer(0);
-    },
+            const multiplier = ms / DEFAULT_NOTE_DURATION_MS;
+            // If multiplier is 1, we can omit it as it is the default
+            if (multiplier === 1) {
+              return note;
+            }
+            // Use up to 2 decimal places for cleaner output (e.g. 0.5 instead of 0.50000)
+            return `${note}@${parseFloat(multiplier.toFixed(2))}`;
+          })
+          .join(" ");
 
-    async applyLed() {
-      const { r, g, b } = this.hexToRgb(this.ledColor);
-      await this.ble?.setLed(this.ledIndex, r, g, b);
-    },
-
-    num(value, digits = 2) {
-      return Number.isFinite(value) ? Number(value).toFixed(digits) : "—";
-    },
-
-    int(value) {
-      return Number.isFinite(value) ? String(value) : "—";
-    },
-
-    hexToRgb(hex: string): RGBColor {
-      const match = /^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex || "#ffffff");
-      return match
-        ? { r: parseInt(match[1], 16), g: parseInt(match[2], 16), b: parseInt(match[3], 16) }
-        : { r: 255, g: 255, b: 255 };
+        const time = `${twoDigits(alarmTime.hour)}:${twoDigits(alarmTime.minute)}`;
+        this.statusText = "Configuración leída de la placa";
+        this.statusLevel = "ok";
+        return { time, melody };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Error leyendo configuración";
+        this.statusText = message;
+        this.statusLevel = "warn";
+        return null;
+      } finally {
+        this.busy = false;
+      }
     },
   };
 }

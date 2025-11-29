@@ -1,19 +1,17 @@
 export type StatusLevel = "muted" | "ok" | "warn";
 
+export interface MelodyStep {
+  freq: number;
+  duration: number;
+}
+
+export interface AlarmConfig {
+  hour: number;
+  minute: number;
+  steps: MelodyStep[];
+}
+
 export interface BLECentralOptions {
-  onTemp?: (value: number) => void;
-  onHum?: (value: number) => void;
-  onPres?: (value: number) => void;
-  onLight?: (value: number) => void;
-  onColorR?: (value: number) => void;
-  onColorG?: (value: number) => void;
-  onColorB?: (value: number) => void;
-  onGx?: (value: number) => void;
-  onGy?: (value: number) => void;
-  onGz?: (value: number) => void;
-  onAx?: (value: number) => void;
-  onAy?: (value: number) => void;
-  onAz?: (value: number) => void;
   onStatus?: (text: string, level: StatusLevel) => void;
   onConnected?: (connected: boolean) => void;
   onDisconnected?: () => void;
@@ -22,49 +20,25 @@ export interface BLECentralOptions {
 export interface BLEController {
   connect(): Promise<void>;
   disconnect(): Promise<void>;
-  setRelay1(state: number): Promise<void>;
-  setRelay2(state: number): Promise<void>;
-  setBuzzer(freq: number): Promise<void>;
-  setLed(index: number, r: number, g: number, b: number): Promise<void>;
+  setAlarmEnabled(enabled: boolean): Promise<void>;
+  setLocalTime(hour: number, minute: number): Promise<void>;
+  setAlarmTime(hour: number, minute: number): Promise<void>;
+  setMelodySequence(sequence: string): Promise<void>;
+  getAlarmTime(): Promise<{ hour: number; minute: number }>;
+  getMelodySequence(): Promise<string>;
 }
-
-export type RGBColor = { r: number; g: number; b: number };
 
 export interface BLEAppState {
   connected: boolean;
   busy: boolean;
   statusText: string;
   statusLevel: StatusLevel;
-  temp: number | null;
-  hum: number | null;
-  pres: number | null;
-  light: number | null;
-  colorR: number | null;
-  colorG: number | null;
-  colorB: number | null;
-  gx: number | null;
-  gy: number | null;
-  gz: number | null;
-  ax: number | null;
-  ay: number | null;
-  az: number | null;
-  relay1: number;
-  relay2: number;
-  buzzerFreq: number;
-  ledColor: string;
-  ledIndex: number;
   ble: BLEController | null;
   init(): void;
   connect(): Promise<void>;
   disconnect(): Promise<void>;
-  toggleRelay1(): Promise<void>;
-  toggleRelay2(): Promise<void>;
-  buzzerOn(): Promise<void>;
-  buzzerOff(): Promise<void>;
-  applyLed(): Promise<void>;
-  num(value: number | null, digits?: number): string;
-  int(value: number | null): string;
-  hexToRgb(hex: string): RGBColor;
+  configureAlarm(time: string, melody: string): Promise<void>;
+  readSettings(): Promise<{ time: string; melody: string } | null>;
 }
 
 export type CreateBLECentralFn = (options?: BLECentralOptions) => BLEController;
@@ -89,6 +63,9 @@ declare global {
     connect(): Promise<BluetoothRemoteGATTServer>;
     disconnect(): void;
     getPrimaryService(service: string | number): Promise<BluetoothRemoteGATTService>;
+    getPrimaryServices?: (
+      service?: string | number
+    ) => Promise<BluetoothRemoteGATTService[]>;
   }
 
   interface BluetoothRemoteGATTService {
@@ -135,5 +112,6 @@ declare global {
   interface Window {
     createBLECentral?: CreateBLECentralFn;
     bleApp?: BleAppFactory;
+    bleAppInstance?: BLEAppState;
   }
 }

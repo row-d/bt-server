@@ -1,0 +1,203 @@
+---
+import SongSelector from "./SongSelector.astro";
+---
+
+<div
+  x-data="alarmComponent"
+  class="w-full max-w-xl mt-4 border border-gray-200 bg-white rounded-lg p-4 shadow-sm"
+  @song-selected="melody = $event.detail"
+>
+  <h2 class="text-lg font-semibold mb-2">Programar alarma musical</h2>
+  <p class="text-sm text-gray-600 mb-4">
+    Ingresa pares <code>nota@duración</code> separados por espacios (por ejemplo, <code>C4@1</code> o <code>A#3@0.5</code>).
+  </p>
+
+  <label class="block text-sm font-medium mb-1">Hora</label>
+  <input
+    type="time"
+    x-model="time"
+    class="border border-gray-300 rounded p-2 mb-4 w-full"
+    required
+  />
+
+  <label class="block text-sm font-medium mb-1">Melodía</label>
+  <textarea
+    x-model="melody"
+    class="w-full h-28 border border-gray-300 rounded p-2"
+    placeholder="Ejemplo: C4@1 E4@0.5 G4@0.5"
+  ></textarea>
+
+  <div class="flex flex-wrap items-center gap-3 mt-3 text-sm text-gray-600">
+    <span>
+      Notas:
+      <strong x-text="steps.length"></strong>
+      /
+      <strong x-text="maxSteps"></strong>
+    </span>
+  </div>
+
+  <p x-show="error" x-text="error" class="text-sm text-red-600 mt-3"></p>
+
+  <div class="flex flex-wrap gap-3 mt-4">
+    <button
+      type="button"
+      x-on:click="play"
+      class="flex-1 bg-blue-500 text-white rounded px-3 py-2"
+    >
+      Escuchar
+    </button>
+
+    <button
+      type="button"
+      x-on:click="stop"
+      class="flex-1 bg-red-500 text-white rounded px-3 py-2"
+    >
+      Detener
+    </button>
+
+    <button
+      type="button"
+      class="flex-1 bg-green-600 text-white rounded px-3 py-2 disabled:opacity-50"
+      x-bind:disabled="sending"
+      x-on:click="setAlarm"
+    >
+      <span x-show="!sending">Enviar a la placa</span>
+      <span x-show="sending">Enviando…</span>
+    </button>
+  </div>
+
+  <div class="mt-4 pt-4 border-t border-gray-100">
+    <button
+      type="button"
+      class="text-sm text-indigo-600 hover:text-indigo-800 underline"
+      x-on:click="loadFromDevice"
+    >
+      Leer configuración actual de la placa
+    </button>
+  </div>
+
+  <SongSelector />
+</div>
+<script>
+  import Alpine from "alpinejs";
+  import * as Tone from "tone";
+  import {
+    MAX_ALARM_STEPS,
+    MIN_NOTE_FREQ,
+    MAX_NOTE_FREQ,
+    MIN_NOTE_DURATION_MS,
+    MAX_NOTE_DURATION_MS,
+  } from "../controllers/mkriot/constants";
+  import { normalizeMelodySequence } from "../controllers/mkriot/sequence";
+
+  document.addEventListener("alpine:init", () => {
+    let synth: Tone.Synth | null = null;
+
+    Alpine.data("alarmComponent", () => ({
+      time: "07:30",
+      melody: "C4@1 E4@1 G4@2",
+      steps: [] as { freq: number; duration: number }[],
+      maxSteps: MAX_ALARM_STEPS,
+      error: "",
+      sending: false,
+      async init() {
+        try {
+          await Tone.start();
+        } catch {}
+        synth = new Tone.Synth().toDestination();
+        this.steps = this.safeParse(this.melody);
+        this.$watch("melody", (value) => {
+          this.steps = this.safeParse(value);
+        });
+        window.addEventListener("ble-settings-loaded", (e: any) => {
+          if (e.detail) {
+            this.time = e.detail.time;
+            this.melody = e.detail.melody;
+          }
+        });
+      },
+      safeParse(value: string) {
+        try {
+          const { steps } = normalizeMelodySequence(value);
+          this.error = "";
+          return steps;
+        } catch {
+          return [];
+        }
+      },
+      getSequenceOrThrow() {
+        const { steps, sequence } = normalizeMelodySequence(this.melody);
+        if (!steps.length) {
+          throw new Error("Agrega al menos una nota");
+        }
+        return { steps, sequence };
+      },
+      async play() {
+        await Tone.start();
+        if (!synth) {
+          synth = new Tone.Synth().toDestination();
+        }
+        let steps;
+        try {
+          ({ steps } = this.getSequenceOrThrow());
+          this.error = "";
+        } catch (err) {
+          this.error = err instanceof Error ? err.message : String(err);
+          return;
+        }
+        let now = Tone.now();
+        steps.forEach(({ freq, duration }) => {
+          const seconds = duration / 1000;
+          synth?.triggerAttackRelease(freq, seconds, now);
+          now += seconds;
+        });
+      },
+      stop() {
+        synth?.triggerRelease();
+      },
+      async loadFromDevice() {
+        const app = window.bleAppInstance;
+        if (!app || !app.connected) {
+          this.error = "Conecta la placa primero";
+          return;
+        }
+        this.error = "";
+        const settings = await app.readSettings();
+        if (settings) {
+          this.time = settings.time;
+          this.melody = settings.melody;
+        }
+      },
+      async setAlarm() {
+        const app = window.bleAppInstance;
+        if (!app) {
+          this.error = "Inicializa la conexión BLE desde arriba";
+          return;
+        }
+        let normalized;
+        try {
+          normalized = this.getSequenceOrThrow();
+        } catch (err) {
+          this.error = err instanceof Error ? err.message : String(err);
+          return;
+        }
+        this.error = "";
+        this.sending = true;
+        try {
+          await app.configureAlarm(this.time, normalized.sequence);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "No se pudo programar la alarma";
+          this.error = message;
+        } finally {
+          this.sending = false;
+        }
+      },
+      get freqRange() {
+        return `${MIN_NOTE_FREQ} Hz – ${MAX_NOTE_FREQ} Hz`;
+      },
+      get durationRange() {
+        return `${MIN_NOTE_DURATION_MS} – ${MAX_NOTE_DURATION_MS}`;
+      },
+    }));
+  });
+</script>

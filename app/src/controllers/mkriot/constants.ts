@@ -1,24 +1,22 @@
-// Service and characteristic UUIDs (match the Arduino sketch)
-export const SERVICE_UUID = "f2c9bbaa-7595-4b33-99e9-0ce1cd1422f9";
-export const CONTROL_UUID = "5f5b4d2a-3b2b-4f8d-a2a7-1a2b3c4d5e6f";
-export const TEMP_UUID = "bcd3a81a-20cc-4e27-be8c-89df34325729"; // float32
-export const HUM_UUID = "2c394694-e7a4-481c-84c7-60faebe166fd"; // float32
-export const PRES_UUID = "fbdd96a8-e40f-467a-ab5d-15955cf5ded1"; // float32
-export const LIGHT_UUID = "2743dc8f-6162-4b48-b2db-ebfd9faa4075"; // int32
+// Service and characteristic UUIDs (mirror arduino/main/main.ino)
+export const SERVICE_UUID = "4e2b8b44-b494-4d79-af1e-3bf62ec2c614";
+export const SWITCH_UUID = "1df56013-b380-45fd-b3e2-b7785d55b1d4"; // byte flag
+export const ALARM_TIME_UUID = "d48e347c-28ec-4054-9170-a4d19330361a"; // hour/minute
+export const LOCAL_TIME_UUID = "2c469837-3418-44d1-b123-2b9a03099c0f"; // hour/minute
+export const MELODY_SEQUENCE_UUID = "07a25765-1304-48d4-9b13-1b0bbef6b418"; // ascii
 
-// Additional sensor UUIDs
-export const COLOR_R_UUID = "5f5b4d30-3b2b-4f8d-a2a7-1a2b3c4d5e6f"; // int32
-export const COLOR_G_UUID = "5f5b4d31-3b2b-4f8d-a2a7-1a2b3c4d5e6f"; // int32
-export const COLOR_B_UUID = "5f5b4d32-3b2b-4f8d-a2a7-1a2b3c4d5e6f"; // int32
-export const GX_UUID = "5f5b4d40-3b2b-4f8d-a2a7-1a2b3c4d5e6f"; // float32
-export const GY_UUID = "5f5b4d41-3b2b-4f8d-a2a7-1a2b3c4d5e6f"; // float32
-export const GZ_UUID = "5f5b4d42-3b2b-4f8d-a2a7-1a2b3c4d5e6f"; // float32
-export const AX_UUID = "5f5b4d43-3b2b-4f8d-a2a7-1a2b3c4d5e6f"; // float32
-export const AY_UUID = "5f5b4d44-3b2b-4f8d-a2a7-1a2b3c4d5e6f"; // float32
-export const AZ_UUID = "5f5b4d45-3b2b-4f8d-a2a7-1a2b3c4d5e6f"; // float32
+// Payload sizes
+export const TIME_PAYLOAD_BYTES = 2;
+export const MELODY_CHAR_BUFFER = 512;
 
-// Control UUIDs
-export const RELAY1_UUID = "5f5b4d2b-3b2b-4f8d-a2a7-1a2b3c4d5e6f"; // byte
-export const RELAY2_UUID = "5f5b4d2c-3b2b-4f8d-a2a7-1a2b3c4d5e6f"; // byte
-export const BUZZER_UUID = "5f5b4d2d-3b2b-4f8d-a2a7-1a2b3c4d5e6f"; // int32
-export const LED_UUID = "5f5b4d2e-3b2b-4f8d-a2a7-1a2b3c4d5e6f"; // 4 bytes payload
+// Alarm composition helpers (match Arduino sketch)
+export const MAX_ALARM_STEPS = 100;
+export const MIN_NOTE_FREQ = 0;
+export const MAX_NOTE_FREQ = 20000;
+export const MIN_NOTE_DURATION_MS = 1;
+export const MAX_NOTE_DURATION_MS = 1000;
+export const DEFAULT_NOTE_DURATION_MS = 500;
+
+
+
+

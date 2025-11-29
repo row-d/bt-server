@@ -11,11 +11,15 @@
   "dependencies": {
     "@astrojs/alpinejs": "^0.4.9",
     "@astrojs/check": "^0.9.5",
+    "@strudel/repl": "^1.2.7",
+    "@strudel/web": "^1.2.6",
     "@tailwindcss/vite": "^4.1.17",
     "@types/alpinejs": "^3.13.11",
     "alpinejs": "^3.15.2",
     "astro": "^5.16.0",
+    "monaco-editor": "^0.55.1",
     "tailwindcss": "^4.1.17",
+    "tone": "^15.1.22",
     "typescript": "^5.9.3"
   }
 }
