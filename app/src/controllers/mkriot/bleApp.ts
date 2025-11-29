@@ -88,17 +88,33 @@ export function bleApp(): BLEAppState {
 
       const controller = this.ble;
       const { hour, minute } = parseTimeValue(time);
-      const now = new Date();
+      // const now = new Date(); // Removed auto-sync
 
       this.busy = true;
       try {
         await Promise.all([
-          controller.setLocalTime(now.getHours(), now.getMinutes()),
+          // controller.setLocalTime(now.getHours(), now.getMinutes()), // Removed auto-sync
           controller.setAlarmTime(hour, minute),
         ]);
         await controller.setMelodySequence(sequence);
         await controller.setAlarmEnabled(true);
         this.statusText = `Alarma programada a las ${twoDigits(hour)}:${twoDigits(minute)}`;
+        this.statusLevel = "ok";
+      } finally {
+        this.busy = false;
+      }
+    },
+
+    async syncTime() {
+      if (!this.ble || !this.connected) {
+        throw new Error("Conecta tu placa antes de sincronizar la hora");
+      }
+      const controller = this.ble;
+      const now = new Date();
+      this.busy = true;
+      try {
+        await controller.setLocalTime(now.getHours(), now.getMinutes());
+        this.statusText = `Hora sincronizada: ${twoDigits(now.getHours())}:${twoDigits(now.getMinutes())}`;
         this.statusLevel = "ok";
       } finally {
         this.busy = false;

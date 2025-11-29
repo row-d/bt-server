@@ -171,13 +171,29 @@ void setMelodySequence(BLEDevice central, BLECharacteristic characteristic) {
 }
 
 void checkAlarm(MKRIoTCarrier &carrier) {
+  // Ensure time is set before checking alarm
+  if (timeStatus() == timeNotSet) return;
+
   if (alarmOn && hour() == alarmH && minute() == alarmM) {
-    if (minute() != lastAlarmMinute) {
+    // We are in the alarm minute.
+    // Check if we have already triggered for this specific minute.
+    if (lastAlarmMinute != minute()) {
       lastAlarmMinute = minute();
+      Serial.print("Alarm Triggered at ");
+      Serial.print(hour());
+      Serial.print(":");
+      Serial.println(minute());
+      
+      // Start the melody if not already playing
       melodyManager.start();
     }
   } else {
-    lastAlarmMinute = -1;
+    // We are NOT in the alarm minute.
+    // Reset the latch so it can trigger again next time (e.g. tomorrow).
+    // We check minute() != alarmM to avoid flickering if time is adjusting.
+    if (minute() != alarmM) {
+      lastAlarmMinute = -1;
+    }
   }
 }
 

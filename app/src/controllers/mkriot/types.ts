@@ -38,6 +38,7 @@ export interface BLEAppState {
   connect(): Promise<void>;
   disconnect(): Promise<void>;
   configureAlarm(time: string, melody: string): Promise<void>;
+  syncTime(): Promise<void>;
   readSettings(): Promise<{ time: string; melody: string } | null>;
 }
 
